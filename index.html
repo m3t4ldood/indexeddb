@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv = "Content-Type" content = "text/html; charset = utf-8" />
+		<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" 
+			integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+		<script type = "text/javascript">
+
+			window.indexedDB = window.indexedDB || window.mozIndexedDB || 
+				window.webkitIndexedDB || window.msIndexedDB;
+
+			window.IDBTransaction = window.IDBTransaction || 
+				window.webkitIDBTransaction || window.msIDBTransaction;
+				window.IDBKeyRange = window.IDBKeyRange || window.webkitIDBKeyRange || 
+				window.msIDBKeyRange
+
+			if (!window.indexedDB) {
+				window.alert("Your browser doesn't support a stable version of IndexedDB.")
+			}
+
+			const shows = [
+				{name: "Simpsons"},
+				{name: "Family Guy"},
+				{name: "Futurama"}
+			];
+
+			const people = [
+				{showID: "1", person: "Bart Simpson"},
+				{showID: "1", person: "Homer Simpson"},
+				{showID: "1", person: "Mr. Burns"},
+
+				{showID: "2", person: "Peter Griffin"},
+				{showID: "2", person: "Brian Griffin"}
+			];
+
+			var db;
+			var openRequest = window.indexedDB.open("tvShows", 1);
+
+			openRequest.onerror = function(event) {
+				console.log("onRequest error!");
+				console.dir(event);
+			};
+
+			openRequest.onupgradeneeded = function(event) {
+
+				console.log("running onupgradeneeded");
+				var db = event.target.result;
+
+
+				if (!db.objectStoreNames.contains("shows")) {
+					var showsOS = db.createObjectStore("shows", {keyPath: "id", autoIncrement: true});
+
+					// sample data
+					for (var i in shows) {
+						showsOS.add(shows[i]);
+					}
+
+				}
+				
+				if (!db.objectStoreNames.contains("people")) {
+					var peopleOS = db.createObjectStore("people", {keyPath: "id", autoIncrement: true});
+					
+					// create index so that we can query by it
+					peopleOS.createIndex("person", "person", {unique: false});
+					peopleOS.createIndex("showID", "showID", {unique: false});
+
+					// sample data
+					for (var i in people) {
+						peopleOS.add(people[i]);
+					}
+				}
+			}
+
+			openRequest.onsuccess = function(event) {
+				db = event.target.result;
+				//console.log("openRequest success: " + db);
+				//console.dir(db.objectStoreNames)
+			};
+
+			function getAllShows() {
+				
+				// While looping through the "onsuccess",
+				// put contents into a variable. 
+				// retrieve this variable when the transaction completes
+				var results = [];
+
+				var transaction		= db.transaction(["shows"],"readonly");
+				var showsOS 	 	= transaction.objectStore("shows");
+				var showsCursor 	= showsOS.openCursor();
+
+				showsCursor.onsuccess = function(event) {
+
+					var cursor = event.target.result;
+
+					if (cursor) {
+						
+						//console.log(cursor);
+						
+						//for(var field in cursor.value) {
+						//	console.log('field: ' + field + '; value: ' + cursor.value[field]);
+						//}
+
+						//console.log("ID:" + cursor.key + "; name: " + cursor.value.name);
+						
+						results.push(cursor.value);
+						cursor.continue();
+					}
+				};
+
+				transaction.oncomplete = function() {
+					// only once the transaction is complete,
+					// do something with it
+					console.dir(results);
+				}
+			}
+
+			function getShowByID() {
+				var showID = '1';
+				
+				var transaction = db.transaction(["shows"], "readonly");
+				var objectStore = transaction.objectStore("shows");
+				var myRequest 	= objectStore.get(Number(showID));
+
+				myRequest.onerror = function(event) {
+					console.log("error", event);
+				};
+
+				myRequest.onsuccess = function(event) {
+					
+					// Can also use event.target.result;
+					if(myRequest.result) {
+						console.log("ID: " + myRequest.result.id + "; name: " + myRequest.result.name);
+					} else {
+						console.log("error ", event);
+					}
+				};
+			}
+
+			function addShow(e) {
+
+				//define a show
+				var show = {
+					name: "My New Show!"
+				}
+				
+				// define transaction, object store, and then add person
+
+				// can create multiple variables, or chain them together
+				//var transaction = db.transaction(["shows"],"readwrite");
+				//var store = transaction.objectStore("shows");
+				//var request = store.add(show);
+
+				var request = db.transaction(["shows"],"readwrite")
+								.objectStore("shows")
+								.add(show);
+
+				request.onerror = function(e) {
+					console.log("Error", e.target.error.name);
+				}
+
+				request.onsuccess = function(e) {
+					console.log("Show Added");
+				}
+			}
+
+			function updateShow(e) {
+
+				// use ".put" instead of ".add"
+				// specify the ID in the object you're updating
+
+				var show = {
+					id: 1,
+					name: 'newName'
+				}
+				
+				// define transaction, object store, and then update person
+				var request = db.transaction(["shows"],"readwrite")
+								.objectStore("shows")
+								.put(show);
+
+				request.onerror = function(e) {
+					console.log("Error", e.target.error.name);
+				}
+
+				request.onsuccess = function(e) {
+					console.log("Show Updated");
+				}
+			}
+
+			function deleteShow(e) {
+
+				var showIDToDelete = 2;
+
+				var request = db.transaction(["shows"],"readwrite")
+								.objectStore("shows")
+								.delete(showIDToDelete);
+
+				request.onerror = function(e) {
+					console.log("Error", e.target.error.name);
+				}
+
+				request.onsuccess = function(e) {
+					console.log("Show Deleted");
+				}
+			}
+
+
+
+			function searchItem(event) {
+
+				var results = [];
+
+				var transaction = db.transaction(["people"],"readonly");
+				var peopleOS 	= transaction.objectStore("people");
+				var index 		= peopleOS.index("person");
+
+				var search 		= "Peter";
+
+				// searching is case-sensitive:
+				// 		solution is to use an upper/lower bound range
+				// seems to be very limiting:
+				//		can't do the equivalent of LIKE with a wildcard
+				var searchLower = search.toUpperCase();
+				var searchUpper = search.toLowerCase() + 'z';
+				var range 		= IDBKeyRange.bound(searchLower, searchUpper);
+
+				index.openCursor(range).onsuccess = function(event) {
+
+					var cursor = event.target.result;
+					
+					if (cursor) {
+						results.push(cursor.value);
+						cursor.continue();
+					}
+				};
+
+				transaction.oncomplete = function() {
+					console.dir(results);
+				}
+			}
+
+			function getAllPeopleForShow() {
+				var showID = '1'; // unsure if quotes are needed; one time it broke, another time it worked
+
+				var results = [];
+
+				var transaction = db.transaction(["people"],"readonly");
+				var peopleOS 	= transaction.objectStore("people");
+				var index 		= peopleOS.index("showID");
+				var range 		= IDBKeyRange.only(showID);
+
+				index.openCursor(range).onsuccess = function(event) {
+					
+					var cursor = event.target.result;
+					
+					if (cursor) {
+						results.push(cursor.value);
+						cursor.continue();
+					}
+				};
+
+				transaction.oncomplete = function() {
+					console.dir(results);
+				}
+
+			}
+		</script>
+
+	</head>
+	<body>
+		<div class="container mt-5">
+			
+			<div class="jumbotron">
+				<h1>IndexDB Examples</h1>
+				<p><strong>After following a handful of tutorials and step-by-step instructions, I created a consolidated set of JavaScript code to interact with the client-side database called IndexDB.</strong></p>
+				<p>I modeled this off of a parent-child relationship of two objects (aka "tables" in the relational database world) called <em>Shows</em> and <em>People</em>.</p>
+				<p>View results in the Developer Console of your browser.</p>
+			</div>
+			
+			<h3>Example: Shows</h3>
+
+			<div>
+				<input type="button" class="btn btn-primary mr-3" value="Get All Shows" 				onClick="getAllShows()" />
+				<input type="button" class="btn btn-primary mr-3" value="Add Show"  					onClick="addShow();" />
+				<input type="button" class="btn btn-primary mr-3" value="Update Show's Name for ID #1"	onClick="updateShow();" />
+				<input type="button" class="btn btn-primary mr-3" value="Get Single Show: ID #1" 		onClick="getShowByID()" />
+				<input type="button" class="btn btn-primary mr-3" value="Delete Single Show: ID #2"		onClick="deleteShow()" />
+			</div>
+			
+
+			<h3 class="mt-5">Example: People</h3>
+
+			<div>
+				<input type="button" class="btn btn-primary mr-3" value="Search All People of Name 'Peter'"	onClick="searchItem()" />
+				<input type="button" class="btn btn-primary mr-3" value="Get All People for Show ID #1"		onClick="getAllPeopleForShow()" />
+			</div>
+			
+			<div class="mt-2">Note: search is quite limited as compared to a real database.</div>
+			
+			<div class="card card-body mt-5">
+				<h2>Sources that helped me the most:</h2>
+				<ul>
+					<li>
+						<a href="https://www.oreilly.com/library/view/client-side-data-storage/9781491935101/ch04.html">
+							"Client-Side Data Storage" by Raymond Camden
+						</a>
+						<span class="badge badge-success">Big help!</span>
+					</li>
+					<li>
+						<a href="https://developers.google.com/web/ilt/pwa/working-with-indexeddb">"Working with IndexedDB" by Google</a>
+					</li>
+					<li>
+						<a href="https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB">
+							"Using IndexedDB" by Mozilla Developer
+						</a>
+					</li>
+					<li>
+						<a href="https://www.tutorialspoint.com/html5/html5_indexeddb.htm">"HTML5 - IndexDB" by Tutorials Point</a>
+					</li>
+					<li>
+						<a href="https://itnext.io/indexeddb-your-second-step-towards-progressive-web-apps-pwa-dcbcd6cc2076">
+							"How to use IndexedDB to build Progressive Web Apps" by ITNext.io
+						</a>
+					</li>
+				</ul>
+			</div>
+
+		</div> <!-- /.container-->
+	</body>
+</html>
